@@ -1,4 +1,4 @@
-# Arduino_irrigation
+# Arduino_Irrigation
 A simple program for Arduino that monitors capacitive soil moisture sensors and actuates a relay that
 opens a solenoid valve that irrigates the garden.
 
