@@ -50,6 +50,11 @@ float sensorCTempC = 0;
 float sensorDTempC = 0;
 float avgSoilTemp = 0;
   
+float boxTemp = 0;
+float boxHumid = 0;
+float airTemp = 0;
+float airHumid = 0;
+
 void setup()
 {
    Wire.begin();
@@ -135,13 +140,13 @@ void LogEnvironment(String waterStatus)
     dataLog.print(",");     
     dataLog.print(avgSoilMoisture);
     dataLog.print(","); 
-    dataLog.print(dhtInsideBox.readHumidity());
+    dataLog.print(boxHumid);
     dataLog.print(","); 
-    dataLog.print(dhtInsideBox.readTemperature());
+    dataLog.print(boxTemp);
     dataLog.print(","); 
-    dataLog.print(dhtOutsideBox.readHumidity());
+    dataLog.print(airHumid);
     dataLog.print(","); 
-    dataLog.print(dhtOutsideBox.readTemperature());
+    dataLog.print(airTemp);
     dataLog.print(","); 
     dataLog.println(waterStatus);
     dataLog.close();
@@ -160,10 +165,10 @@ void LogEnvironment(String waterStatus)
 
 void GetTempAndMoist()
 {
-  moistureSensorAPercent = map(analogRead(A0), 580, 240, 0, 100);
-  moistureSensorBPercent = map(analogRead(A1), 580, 240, 0, 100);
-  moistureSensorCPercent = map(analogRead(A2), 580, 240, 0, 100);
-  moistureSensorDPercent = map(analogRead(A3), 580, 240, 0, 100);
+  moistureSensorAPercent = map(analogRead(A0), 586, 249, 0, 100);
+  moistureSensorBPercent = map(analogRead(A1), 571, 295, 0, 100);
+  moistureSensorCPercent = map(analogRead(A2), 581, 244, 0, 100);
+  moistureSensorDPercent = map(analogRead(A3), 541, 251, 0, 100);
   avgSoilMoisture = ((moistureSensorAPercent + moistureSensorBPercent + moistureSensorCPercent + moistureSensorDPercent)/4);
 
   sensorA.requestTemperatures();
@@ -177,6 +182,11 @@ void GetTempAndMoist()
   sensorCTempC = sensorC.getTempCByIndex(0);
   sensorDTempC = sensorD.getTempCByIndex(0);
   avgSoilTemp = ((sensorATempC + sensorCTempC + sensorDTempC)/3);
+
+  boxHumid = dhtInsideBox.readHumidity();
+  boxTemp = dhtInsideBox.readTemperature();
+  airHumid = dhtOutsideBox.readHumidity(); 
+  airTemp = dhtOutsideBox.readTemperature();
 }
 
 void UpdateDisplay()
@@ -196,7 +206,7 @@ void loop()
   lcd.setCursor(0,1);
   lcd.print(sysIdle);
   
-  if(now.hour() > 5 && now.hour() < 10 && avgSoilMoisture < 25 == true)
+  if(now.hour() > 5 && now.hour() < 10 && avgSoilMoisture < 75 == true)
   {
 
       lcd.setCursor(0,1);
@@ -211,7 +221,7 @@ void loop()
       digitalWrite(valveRelayPin, LOW);
   }
   
-  if(dhtInsideBox.readTemperature()>50)
+  if(boxTemp > 50)
   {
     lcd.setCursor(0,3);
     lcd.print(sysTempWarn);
