@@ -7,47 +7,54 @@
 #include <SD.h>
 #include <DHT.h>
 
-DS3231 rtcA;
-RTClib rtc;
+RTClib clock;
 
 // Set the LCD address to 0x27 for a 20 chars and 4 line display
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 
 OneWire sensorAWire(7);
 OneWire sensorBWire(6);
-OneWire sensorCWire(5);
-OneWire sensorDWire(4);
+//OneWire sensorCWire(5);
+//OneWire sensorDWire(4);
 
 DallasTemperature sensorA(&sensorAWire);
 DallasTemperature sensorB(&sensorBWire);
-DallasTemperature sensorC(&sensorCWire);
-DallasTemperature sensorD(&sensorDWire);
+//DallasTemperature sensorC(&sensorCWire);
+//DallasTemperature sensorD(&sensorDWire);
 
 DHT dhtInsideBox(3, DHT22);
 DHT dhtOutsideBox(2, DHT22);
 
 #define valveRelayPin (int)9
 #define troubleRelayPin (int)8
-#define measuringDelay (long)120000
-#define wateringDelay (long)480000
+#define minSoilMoist (float)65.0
+#define maxSoilTemp (float)30.0
+#define minHourToWater (int)5
+#define maxHourToWater (int)10
+#define maxBoxTemp (float)40
+#define measuringDelay (long)600000
+#define wateringDelay (long)600000
 #define sysNormal (String)"   System Normal   "
 #define clearLine (String)"                    "
 #define sysWatering (String)"      Watering      "
 #define sysIdle (String)"    System Idle    "
 #define sysTempWarn (String)"  OVERHEAT WARNING  "
+#define sysLog (String)" Environment Logged "
+#define sysLogSuccess (String)"   Log Successful   "
 #define sysLogWarn (String)"     LOG ERROR     "
+#define sysWait (String) "Waiting for readings"
 #define sdCardFail (String)"  SD CARD FAILURE  "
 
-int moistureSensorAPercent = 0;
-int moistureSensorBPercent = 0;
-int moistureSensorCPercent = 0;
-int moistureSensorDPercent = 0;
-int avgSoilMoisture = 0;
+float moistureSensorAPercent = 0;
+float moistureSensorBPercent = 0;
+//int moistureSensorCPercent = 0;
+//int moistureSensorDPercent = 0;
+float avgSoilMoisture = 0;
 
 float sensorATempC = 0;
 float sensorBTempC = 0;
-float sensorCTempC = 0;
-float sensorDTempC = 0;
+//float sensorCTempC = 0;
+//float sensorDTempC = 0;
 float avgSoilTemp = 0;
   
 float boxTemp = 0;
@@ -55,15 +62,24 @@ float boxHumid = 0;
 float airTemp = 0;
 float airHumid = 0;
 
+//bool century = false;
+//bool h12Flag;
+//bool pmFlag;
+bool wateredLastHour = false;
+int cycleCount = 0;
+
 void setup()
 {
+
    Wire.begin();
    SPI.begin();
+   Serial.begin(9600);
+   
    
   sensorA.begin();
   sensorB.begin();
-  sensorC.begin();
-  sensorD.begin();
+  //sensorC.begin();
+  //sensorD.begin();
 
   dhtInsideBox.begin();
   dhtOutsideBox.begin();
@@ -91,23 +107,72 @@ void setup()
     lcd.print("   sd card sucess   ");
     digitalWrite(troubleRelayPin, LOW);
   }
-  
-  // Uncomment and set these properties to set the time
-//  rtcA.setYear(21);
-//  rtcA.setMonth(3);
-//  rtcA.setDate(27);
-//  rtcA.setDoW(6);
-//  rtcA.setHour(7);
-//  rtcA.setMinute(47);
-//  rtcA.setSecond(50);
 }
 
-void LogEnvironment(String waterStatus)
+void GetTempAndMoist()
 {
-  DateTime now  = rtc.now();
+  moistureSensorAPercent = map(analogRead(A0), 583, 247, 0, 100);
+  moistureSensorBPercent = map(analogRead(A1), 598, 262, 0, 100);
+  //moistureSensorCPercent = map(analogRead(A2), 521, 218, 0, 100);
+  //moistureSensorDPercent = map(analogRead(A3), 527, 218, 0, 100);
+  avgSoilMoisture = ((moistureSensorAPercent + moistureSensorBPercent)/2);
+
+  sensorA.requestTemperatures();
+  sensorB.requestTemperatures();
+  //sensorC.requestTemperatures();
+  //sensorD.requestTemperatures();
+  
+  // Get the temperatures
+  sensorATempC = sensorA.getTempCByIndex(0);
+  sensorBTempC = sensorB.getTempCByIndex(0);
+  //sensorCTempC = sensorC.getTempCByIndex(0);
+  //sensorDTempC = sensorD.getTempCByIndex(0);
+  avgSoilTemp = ((sensorATempC + sensorBTempC)/2);
+
+  boxHumid = dhtInsideBox.readHumidity();
+  boxTemp = dhtInsideBox.readTemperature();
+  airHumid = dhtOutsideBox.readHumidity(); 
+  airTemp = dhtOutsideBox.readTemperature();
+}
+
+void clearLCDLine(int line)
+{               
+        lcd.setCursor(0,line);
+        for(int n = 0; n < 20; n++) // 20 indicates symbols in line. For 2x16 LCD write - 16
+        {
+                lcd.print(" ");
+        }
+}
+
+void UpdateDisplay(String sysStatus, String msg1)
+{
+  clearLCDLine(0);
+  clearLCDLine(1);
+  lcd.setCursor(0, 0);
+  DateTime now = clock.now();
+  lcd.print("-----" + String(now.year()) + "-" + String(now.month()) + "-" + String(now.day())+"-----");
+  lcd.setCursor(0,1);
+  lcd.print(sysStatus);
+  if(msg1 != "")
+  {
+    clearLCDLine(2);
+    lcd.setCursor(0,2);
+    lcd.print(msg1);
+  }
+    clearLCDLine(2);
+    clearLCDLine(3);
+    lcd.setCursor(0,2);
+    lcd.print("Last Data: "  + String(now.hour()) + ":" + String(now.minute()));
+    lcd.setCursor(0,3);
+    lcd.print("SM:"  + String(avgSoilMoisture) + "%,ST:" + String(avgSoilTemp)+"C");
+}
+
+void LogEnvironment(String wateredWithinLastHour)
+{
   File dataLog = SD.open("log.txt", FILE_WRITE);
   if(dataLog)
   {
+    DateTime now = clock.now();
     dataLog.print(now.year());
     dataLog.print("-");
     dataLog.print(now.month());
@@ -122,22 +187,12 @@ void LogEnvironment(String waterStatus)
     dataLog.print(","); 
     dataLog.print(sensorBTempC);
     dataLog.print(","); 
-    dataLog.print(sensorCTempC);
-    dataLog.print(","); 
-    dataLog.print(sensorDTempC);
-    dataLog.print(","); 
     dataLog.print(avgSoilTemp);
-    dataLog.print(","); 
-    dataLog.print(avgSoilMoisture);
-    dataLog.print(","); 
+    dataLog.print(",");
     dataLog.print(moistureSensorAPercent);
     dataLog.print(","); 
     dataLog.print(moistureSensorBPercent);
     dataLog.print(","); 
-    dataLog.print(moistureSensorCPercent);
-    dataLog.print(","); 
-    dataLog.print(moistureSensorDPercent);
-    dataLog.print(",");     
     dataLog.print(avgSoilMoisture);
     dataLog.print(","); 
     dataLog.print(boxHumid);
@@ -148,96 +203,90 @@ void LogEnvironment(String waterStatus)
     dataLog.print(","); 
     dataLog.print(airTemp);
     dataLog.print(","); 
-    dataLog.println(waterStatus);
+    dataLog.println(wateredWithinLastHour);
     dataLog.close();
-    lcd.setCursor(0,2);
-    lcd.print("Last Log: "  + String(now.hour()) + ":" + String(now.minute()));
     digitalWrite(troubleRelayPin, LOW);
   }
   else 
   {
-    lcd.setCursor(0,3);
-    lcd.print(sysLogWarn);
+    UpdateDisplay(sysIdle, sysLogWarn);
     digitalWrite(troubleRelayPin, HIGH);
     digitalWrite(valveRelayPin, LOW);
   }
 }
 
-void GetTempAndMoist()
-{
-  moistureSensorAPercent = map(analogRead(A0), 586, 249, 0, 100);
-  moistureSensorBPercent = map(analogRead(A1), 571, 295, 0, 100);
-  moistureSensorCPercent = map(analogRead(A2), 581, 244, 0, 100);
-  moistureSensorDPercent = map(analogRead(A3), 541, 251, 0, 100);
-  avgSoilMoisture = ((moistureSensorAPercent + moistureSensorBPercent + moistureSensorCPercent + moistureSensorDPercent)/4);
-
-  sensorA.requestTemperatures();
-  sensorB.requestTemperatures();
-  sensorC.requestTemperatures();
-  sensorD.requestTemperatures();
-  
-  // Get the temperatures
-  sensorATempC = sensorA.getTempCByIndex(0);
-  sensorBTempC = sensorB.getTempCByIndex(0);
-  sensorCTempC = sensorC.getTempCByIndex(0);
-  sensorDTempC = sensorD.getTempCByIndex(0);
-  avgSoilTemp = ((sensorATempC + sensorCTempC + sensorDTempC)/3);
-
-  boxHumid = dhtInsideBox.readHumidity();
-  boxTemp = dhtInsideBox.readTemperature();
-  airHumid = dhtOutsideBox.readHumidity(); 
-  airTemp = dhtOutsideBox.readTemperature();
-}
-
-void UpdateDisplay()
-{
-  lcd.clear();
-  DateTime now  = rtc.now();
-  lcd.setCursor(0, 0);
-  lcd.print("-----" + String(now.year()) + "-" + String(now.month()) + "-" + String(now.day())+"-----");
-}
-
 void loop()
 {
-  bool watering = false;
-  DateTime now  = rtc.now();
-  GetTempAndMoist();
-  UpdateDisplay(); 
-  lcd.setCursor(0,1);
-  lcd.print(sysIdle);
+  // Check the temperature inside the housing
+  if(boxTemp > maxBoxTemp)
+  {
+    UpdateDisplay(sysTempWarn, "");
+    digitalWrite(troubleRelayPin, HIGH);
+  }
   
-  if(now.hour() > 5 && now.hour() < 10 && avgSoilMoisture < 75 == true)
+  bool watering = false;
+  GetTempAndMoist();
+  Serial.println("CC " + String(cycleCount));
+  
+  DateTime now = clock.now();
+  Serial.println(String(avgSoilMoisture));
+
+  // Check to see if the conditions are met for watering, either dry soil in the morning or
+  // if the soil is hot and dry
+  if(((now.hour()) > minHourToWater && (now.hour() < maxHourToWater) && (avgSoilMoisture < minSoilMoist))||((avgSoilTemp > maxSoilTemp) && (avgSoilMoisture < minSoilMoist)))
   {
 
-      lcd.setCursor(0,1);
-      lcd.print(sysWatering);
+      UpdateDisplay(sysWatering, "");
       digitalWrite(valveRelayPin, HIGH);
       watering = true;
       delay(wateringDelay);
       GetTempAndMoist();
-      UpdateDisplay(); 
-      lcd.setCursor(0,1);
-      lcd.print(sysIdle);
+      UpdateDisplay(sysWait, ""); 
       digitalWrite(valveRelayPin, LOW);
-  }
-  
-  if(boxTemp > 50)
-  {
-    lcd.setCursor(0,3);
-    lcd.print(sysTempWarn);
-    digitalWrite(troubleRelayPin, HIGH);
-  }
-  
-  if(watering == true)
-  {
-      GetTempAndMoist();
-      LogEnvironment("OPEN");
-      delay(measuringDelay);
   }
   else
   {
-    GetTempAndMoist();
-    LogEnvironment("OFF");
-    delay(measuringDelay + wateringDelay);
+      UpdateDisplay(sysIdle, ""); 
   }
-}
+  
+  
+  cycleCount++;
+  if(watering == true)
+  {
+    wateredLastHour = true;
+    delay(measuringDelay);
+    // Increment the count here since its waited for 10 minutes, 8 in the watering part, and two to measure
+    switch(cycleCount) 
+    {
+    case 3:
+      GetTempAndMoist();
+      LogEnvironment(String(wateredLastHour));
+      UpdateDisplay(sysLog, "");
+      wateredLastHour = false;
+      Serial.println("logged");
+      break;
+    }
+  }
+  else
+  {
+    delay(measuringDelay + wateringDelay);
+    // Increment the count here since its waited for 10 minutes
+    now = clock.now();
+    switch(cycleCount) 
+    {
+      case 3:
+        GetTempAndMoist();
+        LogEnvironment("False");
+        UpdateDisplay(sysLog, "");
+        Serial.println("logged");
+        break;
+      }
+  }
+ 
+  switch(cycleCount) 
+  {
+    case 6:
+    cycleCount = 0;
+    break;
+  }
+  }
