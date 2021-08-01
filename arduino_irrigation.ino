@@ -27,7 +27,7 @@ DHT dhtOutsideBox(2, DHT22);
 
 #define valveRelayPin (int)9
 #define troubleRelayPin (int)8
-#define minSoilMoist (float)65.0
+#define minSoilMoist (float)55.0
 #define maxSoilTemp (float)30.0
 #define minHourToWater (int)5
 #define maxHourToWater (int)10
@@ -111,8 +111,8 @@ void setup()
 
 void GetTempAndMoist()
 {
-  moistureSensorAPercent = map(analogRead(A0), 583, 247, 0, 100);
-  moistureSensorBPercent = map(analogRead(A1), 598, 262, 0, 100);
+  moistureSensorAPercent = map(analogRead(A0), 375, 247, 0, 100);
+  moistureSensorBPercent = map(analogRead(A1), 375, 262, 0, 100);
   //moistureSensorCPercent = map(analogRead(A2), 521, 218, 0, 100);
   //moistureSensorDPercent = map(analogRead(A3), 527, 218, 0, 100);
   avgSoilMoisture = ((moistureSensorAPercent + moistureSensorBPercent)/2);
@@ -233,6 +233,7 @@ void loop()
 
   // Check to see if the conditions are met for watering, either dry soil in the morning or
   // if the soil is hot and dry
+  int thisHour = now.hour();
   if(((now.hour()) > minHourToWater && (now.hour() < maxHourToWater) && (avgSoilMoisture < minSoilMoist))||((avgSoilTemp > maxSoilTemp) && (avgSoilMoisture < minSoilMoist)))
   {
 
